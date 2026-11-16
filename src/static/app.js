@@ -12,6 +12,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      while (activitySelect.options.length > 1) {
+        activitySelect.remove(1);
+      }
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -24,17 +27,67 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="activity-availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <h5 class="participants-title">Participants (${details.participants.length})</h5>
         `;
 
         if (details.participants.length > 0) {
           const participantsList = document.createElement("ul");
           participantsList.className = "participants-list";
+          const participantsTitle = activityCard.querySelector(".participants-title");
 
           details.participants.forEach((email) => {
             const participantItem = document.createElement("li");
-            participantItem.textContent = email;
+            const participantEmail = document.createElement("span");
+            participantEmail.className = "participant-email";
+            participantEmail.textContent = email;
+
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "participant-remove";
+            removeButton.setAttribute("aria-label", `Cancel signup for ${email}`);
+            removeButton.title = `Cancel signup for ${email}`;
+            removeButton.innerHTML = `
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" />
+              </svg>
+            `;
+            removeButton.addEventListener("click", async () => {
+              removeButton.disabled = true;
+
+              try {
+                const response = await fetch(
+                  `/activities/${encodeURIComponent(name)}/signup?email=${encodeURIComponent(email)}`,
+                  { method: "DELETE" }
+                );
+                const result = await response.json();
+
+                if (!response.ok) {
+                  throw new Error(result.detail || "Unable to cancel signup");
+                }
+
+                participantItem.remove();
+                const remainingParticipants = participantsList.children.length;
+                participantsTitle.textContent = `Participants (${remainingParticipants})`;
+                activityCard.querySelector(".activity-availability").innerHTML =
+                  `<strong>Availability:</strong> ${details.max_participants - remainingParticipants} spots left`;
+
+                if (remainingParticipants === 0) {
+                  const emptyMessage = document.createElement("p");
+                  emptyMessage.className = "participants-empty";
+                  emptyMessage.textContent = "No participants yet";
+                  participantsList.replaceWith(emptyMessage);
+                }
+              } catch (error) {
+                removeButton.disabled = false;
+                messageDiv.textContent = error.message || "Failed to cancel signup. Please try again.";
+                messageDiv.className = "error";
+                messageDiv.classList.remove("hidden");
+              }
+            });
+
+            participantItem.appendChild(participantEmail);
+            participantItem.appendChild(removeButton);
             participantsList.appendChild(participantItem);
           });
 
@@ -81,6 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
